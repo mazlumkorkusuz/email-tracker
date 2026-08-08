@@ -23,7 +23,7 @@ def init_db():
 init_db()
 
 PIXEL = base64.b64decode(
-    'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 )
 
 @app.route('/track')
@@ -41,13 +41,27 @@ def track():
     conn.commit()
     conn.close()
     
-    return send_file(io.BytesIO(PIXEL), mimetype='image/gif')
+    return send_file(io.BytesIO(PIXEL), mimetype='image/png')
 
 @app.route('/stats')
 def stats():
     conn = sqlite3.connect('tracking.db')
     c = conn.cursor()
-    c.execute('SELECT name, email, opened_at FROM opens ORDER BY opened_at DESC')
+    
+    # Toplam açılma
+    c.execute('SELECT COUNT(*) FROM opens')
+    total = c.fetchone()[0]
+    
+    # Unique kişi sayısı
+    c.execute('SELECT COUNT(DISTINCT LOWER(email)) FROM opens WHERE email != ""')
+    unique = c.fetchone()[0]
+    
+    # Unique kişiler listesi (son açılma zamanıyla)
+    c.execute('''SELECT name, email, COUNT(*) as kez, MAX(opened_at) as son_acilis 
+                 FROM opens 
+                 WHERE email != ""
+                 GROUP BY LOWER(email) 
+                 ORDER BY son_acilis DESC''')
     rows = c.fetchall()
     conn.close()
     
@@ -58,21 +72,36 @@ def stats():
         <style>
             body { font-family: Arial; background: #0d1527; color: #c8d8ec; padding: 20px; }
             h1 { color: #F0C040; }
+            .stats { display: flex; gap: 20px; margin-bottom: 20px; }
+            .stat-box { background: #111e3a; border: 1px solid #8B6914; border-radius: 4px; padding: 16px 24px; text-align: center; }
+            .stat-number { font-size: 32px; color: #F0C040; font-weight: bold; }
+            .stat-label { font-size: 12px; color: #8fa8c8; margin-top: 4px; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
             th { background: #111e3a; color: #F0C040; padding: 10px; text-align: left; }
             td { padding: 10px; border-bottom: 1px solid #1e2d4a; }
-            .count { font-size: 24px; color: #F0C040; font-weight: bold; }
+            .badge { background: #8B6914; color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
         </style>
     </head>
     <body>
         <h1>📊 Email Tracking Dashboard</h1>
-        <p>Toplam açılma: <span class="count">''' + str(len(rows)) + '''</span></p>
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-number">''' + str(total) + '''</div>
+                <div class="stat-label">Toplam Açılma</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number">''' + str(unique) + '''</div>
+                <div class="stat-label">Unique Kişi</div>
+            </div>
+        </div>
         <table>
-            <tr><th>İsim</th><th>Email</th><th>Açılma Zamanı</th></tr>
+            <tr><th>İsim</th><th>Email</th><th>Kaç Kez Açtı</th><th>Son Açılma</th></tr>
     '''
     
     for row in rows:
-        html += f'<tr><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td></tr>'
+        kez = row[2]
+        badge = f'<span class="badge">{kez}x</span>' if kez > 1 else ''
+        html += f'<tr><td>{row[0]}</td><td>{row[1]}</td><td>{badge} {kez}</td><td>{row[3]}</td></tr>'
     
     html += '</table></body></html>'
     return html
